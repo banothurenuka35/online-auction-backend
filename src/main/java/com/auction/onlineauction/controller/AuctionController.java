@@ -1,3 +1,4 @@
+
 package com.auction.onlineauction.controller;
 
 import com.auction.onlineauction.entity.Auction;
@@ -23,16 +24,14 @@ public class AuctionController {
             @RequestBody Auction auction) {
 
         return ResponseEntity.ok(
-                auctionService.createAuction(auction)
-        );
+                auctionService.createAuction(auction));
     }
 
     @GetMapping
     public ResponseEntity<List<Auction>> getAllAuctions() {
 
         return ResponseEntity.ok(
-                auctionService.getAllAuctions()
-        );
+                auctionService.getAllAuctions());
     }
 
     @GetMapping("/{id}")
@@ -54,22 +53,16 @@ public class AuctionController {
 
                     existingAuction.setProductId(
                             auction.getProductId());
-
                     existingAuction.setStartTime(
                             auction.getStartTime());
-
                     existingAuction.setEndTime(
                             auction.getEndTime());
-
                     existingAuction.setMinimumBidIncrement(
                             auction.getMinimumBidIncrement());
-
                     existingAuction.setCurrentBid(
                             auction.getCurrentBid());
-
                     existingAuction.setStatus(
                             auction.getStatus());
-
                     existingAuction.setWinnerId(
                             auction.getWinnerId());
 
@@ -78,5 +71,18 @@ public class AuctionController {
                                     existingAuction));
                 })
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    // Manually close an auction
+    @PutMapping("/{id}/close")
+    public ResponseEntity<Auction> closeAuctionNow(
+            @PathVariable Long id) {
+
+        try {
+            return ResponseEntity.ok(
+                    auctionService.closeAuctionNow(id));
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 }
