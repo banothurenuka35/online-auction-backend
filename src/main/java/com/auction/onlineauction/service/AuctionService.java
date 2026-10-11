@@ -1,3 +1,4 @@
+
 package com.auction.onlineauction.service;
 
 import com.auction.onlineauction.entity.Auction;
@@ -52,11 +53,62 @@ public class AuctionService {
         return auctionRepository.save(auction);
     }
 
+    // Close auction and select the highest bidder
+    public Auction closeAuctionNow(Long id) {
+
+        Auction auction = auctionRepository.findById(id)
+                .orElseThrow(() ->
+                        new RuntimeException("Auction not found"));
+
+        if ("CLOSED".equalsIgnoreCase(auction.getStatus())) {
+            return auction;
+        }
+
+        Optional<Bid> highestBid =
+                bidRepository.findTopByAuctionIdOrderByAmountDesc(id);
+
+        if (highestBid.isPresent()) {
+            Bid winningBid = highestBid.get();
+
+            auction.setWinnerId(winningBid.getBidderId());
+            auction.setCurrentBid(winningBid.getAmount());
+
+            notificationService.createNotification(
+                    winningBid.getBidderId(),
+                    "Congratulations! You won auction "
+                            + auction.getId()
+                            + " with a bid of "
+                            + winningBid.getAmount(),
+                    "WINNER_ANNOUNCEMENT"
+            );
+
+            Optional<Product> product =
+                    productRepository.findById(auction.getProductId());
+
+            if (product.isPresent()
+                    && product.get().getSellerId() != null) {
+
+                notificationService.createNotification(
+                        product.get().getSellerId(),
+                        "Your auction " + auction.getId()
+                                + " has ended. Winning bid: "
+                                + winningBid.getAmount(),
+                        "AUCTION_SOLD"
+                );
+            }
+        } else {
+            auction.setWinnerId(null);
+        }
+
+        auction.setStatus("CLOSED");
+
+        return auctionRepository.save(auction);
+    }
+
     @Scheduled(fixedRate = 30000)
     public void checkAuctionEndingSoon() {
 
         List<Auction> auctions = auctionRepository.findAll();
-
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime fiveMinutesLater = now.plusMinutes(5);
 
@@ -73,21 +125,15 @@ public class AuctionService {
                 Set<Long> notifiedUsers = new HashSet<>();
 
                 for (Bid bid : bids) {
-
                     Long userId = bid.getBidderId();
 
-                    if (!notifiedUsers.contains(userId)) {
-
+                    if (notifiedUsers.add(userId)) {
                         notificationService.createNotification(
                                 userId,
-                                "Auction "
-                                        + auction.getId()
-                                        + " is ending soon. "
-                                        + "Place your final bid!",
+                                "Auction " + auction.getId()
+                                        + " is ending soon. Place your final bid!",
                                 "AUCTION_ENDING_SOON"
                         );
-
-                        notifiedUsers.add(userId);
                     }
                 }
             }
@@ -98,92 +144,19 @@ public class AuctionService {
     public void closeExpiredAuctions() {
 
         List<Auction> auctions = auctionRepository.findAll();
-
         LocalDateTime now = LocalDateTime.now();
 
         for (Auction auction : auctions) {
 
             if ("ACTIVE".equalsIgnoreCase(auction.getStatus())
                     && auction.getEndTime() != null
-                    && auction.getEndTime().isBefore(now)) {
+                    && !auction.getEndTime().isAfter(now)) {
 
-                Optional<Bid> highestBid =
-                        bidRepository
-                                .findTopByAuctionIdOrderByAmountDesc(
-                                        auction.getId());
-
-                if (highestBid.isPresent()) {
-
-                    Bid winningBid = highestBid.get();
-
-                    auction.setWinnerId(
-                            winningBid.getBidderId());
-
-                    auction.setCurrentBid(
-                            winningBid.getAmount());
-
-                    // Notify winner
-                    notificationService.createNotification(
-                            winningBid.getBidderId(),
-                            "Congratulations! You won auction "
-                                    + auction.getId()
-                                    + " with a bid of "
-                                    + winningBid.getAmount(),
-                            "WINNER_ANNOUNCEMENT"
-                    );
-
-                    // Find product and notify seller
-                    Optional<Product> product =
-                            productRepository.findById(
-                                    auction.getProductId());
-
-                    if (product.isPresent()
-                            && product.get().getSellerId() != null) {
-
-                        Long sellerId =
-                                product.get().getSellerId();
-
-                        notificationService.createNotification(
-                                sellerId,
-                                "Your auction "
-                                        + auction.getId()
-                                        + " has ended. "
-                                        + "The winning bid is "
-                                        + winningBid.getAmount()
-                                        + " by user "
-                                        + winningBid.getBidderId(),
-                                "AUCTION_SOLD"
-                        );
-                    }
-
-                } else {
-
-                    auction.setWinnerId(null);
-
-                    System.out.println(
-                            "No bids were placed for auction "
-                                    + auction.getId());
-                }
-
-                auction.setStatus("CLOSED");
-
-                auctionRepository.save(auction);
+                closeAuctionNow(auction.getId());
 
                 System.out.println(
-                        "Auction "
-                                + auction.getId()
-                                + " closed successfully.");
-
-                if (highestBid.isPresent()) {
-
-                    System.out.println(
-                            "Winner ID: "
-                                    + highestBid.get().getBidderId());
-
-                    System.out.println(
-                            "Winning Amount: "
-                                    + highestBid.get().getAmount());
-                }
+                        "Auction " + auction.getId()
+                                + " closed automatically.");
             }
         }
     }
